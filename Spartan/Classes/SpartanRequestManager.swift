@@ -19,6 +19,7 @@
 import AlamoRecord
 import Alamofire
 import AlamofireObjectMapper
+import ObjectMapper
 
 public class SpartanRequestManager: RequestManager<SpartanURL, SpartanError> {
 
@@ -50,6 +51,70 @@ public class SpartanRequestManager: RequestManager<SpartanURL, SpartanError> {
             case .failure(let error):
                 failure?(SpartanError(nsError: error as NSError))
             }
+        }
+    }
+    
+    public func mapObject<T: Mappable, E: SpartanError>(_ method: Alamofire.HTTPMethod,
+                                                        url: SpartanURL,
+                                                        returnCachedResponse: Bool,
+                                                        parameters: Parameters? = nil,
+                                                        keyPath: String? = nil,
+                                                        encoding: ParameterEncoding = URLEncoding.default,
+                                                        headers: HTTPHeaders? = nil,
+                                                        success: ((T) -> Void)?,
+                                                        failure: ((E) -> Void)?) -> DataRequest? {
+        
+        if returnCachedResponse, let url = URL(string: url.absolute) {
+            
+            let urlRequest = try! URLRequest(url: url, method: method, headers: headers)
+            let encodedURLRequest = try! encoding.encode(urlRequest, with: parameters)
+            if let resolvedEntity: T = cachedResponse(urlRequest: encodedURLRequest) {
+                success?(resolvedEntity)
+                return nil
+            }
+        }
+        
+        return mapObject(method,
+                         url: url,
+                         parameters: parameters,
+                         keyPath: keyPath,
+                         encoding: encoding,
+                         headers: headers,
+                         success: success,
+                         failure: nil)
+            .responseObject(keyPath: keyPath, completionHandler: { [unowned self] (response: DataResponse<T>) in
+                switch response.result {
+                case .success:
+                    self.cache(response: response)
+                    success?(response.result.value!)
+                case .failure(let error):
+                    let nsError = error as NSError
+                    print(nsError.localizedDescription)
+                    failure?(E(nsError: nsError))
+                }
+            })
+    }
+    
+    private func cachedResponse<T: Mappable>(urlRequest: URLRequest) -> T? {
+        if let response = URLCache.shared.cachedResponse(for: urlRequest),
+            let jsonString = String.init(data: response.data, encoding: .utf8),
+            let resolvedEntity = T(JSONString: jsonString)
+        {
+            print("🙃 SUCCESSFULLY returning cached response for \(urlRequest.description)")
+            return resolvedEntity
+        } else {
+            print("🤨 FAILED to return cached response for \(urlRequest.description)")
+            return nil
+        }
+    }
+    
+    private func cache<T: Mappable>(response: DataResponse<T>) {
+        if let httpResponse = response.response, let data = response.data, let request = response.request {
+            let cachedResponse = CachedURLResponse.init(response: httpResponse,
+                                                        data: data,
+                                                        userInfo: nil,
+                                                        storagePolicy: .allowed)
+            URLCache.shared.storeCachedResponse(cachedResponse, for: request)
         }
     }
 }
