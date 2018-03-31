@@ -530,13 +530,14 @@ public class Spartan: NSObject {
                                      offset: Int = 0,
                                      market: CountryCode? = nil,
                                      success: @escaping ((PagingObject<SavedTrack>) -> Void),
-                                     failure: ((SpartanError) -> Void)?) -> Request {
+                                     failure: ((SpartanError) -> Void)?) -> Request? {
        
         let url = SpartanURL(url: "me/\(Track.pluralRoot)")
         var parameters: [String: Any] = ["limit" : limit, "offset" : offset]
         checkOptionalParamAddition(paramName: "market", param: market?.rawValue, parameters: &parameters)
         return SpartanRequestManager.default.mapObject(.get,
                                                        url: url,
+                                                       returnCachedResponse: true,
                                                        parameters: parameters,
                                                        success: success,
                                                        failure: failure)
